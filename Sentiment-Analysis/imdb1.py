@@ -13,7 +13,7 @@ tf.flags.DEFINE_integer('embedding_size', 200, 'size of dense representation of 
 tf.flags.DEFINE_integer('epochs', 20, 'number of iteration')
 tf.flags.DEFINE_integer('batch_size', 128, 'batch size')
 tf.flags.DEFINE_float('lr', 0.001, 'learning rate')
-tf.flags.DEFINE_string('data', '/home/zqb/pythonwork/DL/data/imdb.npz', 'directory of imdb data file')
+tf.flags.DEFINE_string('data', 'imdb.npz', 'directory of imdb data file')
 FLAGS = tf.flags.FLAGS
 
 
