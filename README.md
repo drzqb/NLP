@@ -1,2 +1,2 @@
 # NLP
-This repository includes two parts which are all built on the famous Seq2Seq model with attention. In Neural Machine Translation section there are two kinds of Seq2Seq model. The difference between them lises in the different positions of attention unit.
+This repository now includes following parts: Neural Machine Translation and chatbot are all built on the famous Seq2Seq model with attention. In Neural Machine Translation section there are two kinds of Seq2Seq model. The difference between them lises in the different positions of attention unit. The part of Sentiment Analysis is using GRU to help to analysis the sentiment about the imdb datasets.
