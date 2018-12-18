@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pylab as plt
 import os, sys, zipfile, collections
 from sklearn.manifold import TSNE
-from cbow_hparams import FLAGS
+from word2vec_hp import FLAGS
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
@@ -111,7 +111,7 @@ class CBOW():
             final_matrix = sess.run(self.norm_matrix)[1:FLAGS.plot_total + 1]
             low_dim_matrix = tsne.fit_transform(final_matrix)
 
-            fig = plt.figure(figsize=(10, 10))
+            fig = plt.figure(figsize=(100, 100))
             for i in range(FLAGS.plot_total):
                 plt.plot(low_dim_matrix[i, 0], low_dim_matrix[i, 1], 'r*')
                 plt.text(low_dim_matrix[i, 0], low_dim_matrix[i, 1], ind2word[i + 1])
@@ -120,13 +120,14 @@ class CBOW():
 
         fig = plt.figure(figsize=(10, 10))
         plt.plot(loss_)
-        plt.savefig(FLAGS.loss_save, bbox_inches='tight')
+        plt.savefig(FLAGS.loss_cbow_save, bbox_inches='tight')
         plt.close(fig)
 
 
 def main(unused_argv):
-    lang = Lang()
     cbow = CBOW()
+    lang = Lang()
+
     cbow.train(lang.x_train, lang.y_train, lang.ind2word)
 
 
