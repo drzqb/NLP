@@ -118,7 +118,7 @@ class CBOW():
             final_matrix = sess.run(self.norm_matrix)[1:FLAGS.plot_total + 1]
             low_dim_matrix = tsne.fit_transform(final_matrix)
 
-            fig = plt.figure(figsize=(100, 100))
+            fig = plt.figure(figsize=(10, 10))
             for i in range(FLAGS.plot_total):
                 plt.plot(low_dim_matrix[i, 0], low_dim_matrix[i, 1], 'r*')
                 plt.text(low_dim_matrix[i, 0], low_dim_matrix[i, 1], ind2word[i + 1])
