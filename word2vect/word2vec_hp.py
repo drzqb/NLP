@@ -7,7 +7,7 @@ tf.flags.DEFINE_integer('embed_size', 256, 'size of dense representation of word
 tf.flags.DEFINE_integer('window_size', 1, 'size of slide window in cbow model')
 tf.flags.DEFINE_integer('epochs', 10000, 'number of iteration')
 tf.flags.DEFINE_integer('batch_size', 1024, 'batch size')
-tf.flags.DEFINE_integer('plot_total', 1000, 'number of words plotted in 2D figure')
+tf.flags.DEFINE_integer('plot_total', 200, 'number of words plotted in 2D figure')
 tf.flags.DEFINE_float('lr', 0.1, 'learning rate')
 tf.flags.DEFINE_string('cbow_save', 'cbow.png', 'filename of saved word vectors for cbow')
 tf.flags.DEFINE_string('loss_cbow_save', 'loss_cbow.png', 'picture of saved loss for cbow')
