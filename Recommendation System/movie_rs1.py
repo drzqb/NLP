@@ -166,9 +166,9 @@ class RecommendationSystem():
         writer.close()
 
     def train(self, lang):
-        m_sample = np.shape(lang.ratings['rating'])[0]
+        m_samples = np.shape(lang.ratings['rating'])[0]
 
-        total_batch = m_sample // self.config.batch_size
+        total_batch = m_samples // self.config.batch_size
 
         loss_ = []
 
