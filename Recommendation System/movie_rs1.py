@@ -8,6 +8,7 @@ from rs_hp import CONFIG
 import numpy as np
 import collections
 import sys
+import os
 
 
 class Lang():
@@ -103,8 +104,6 @@ class Lang():
         for word, _ in counter:
             self.title_dict[word] = len(self.title_dict)
 
-        self.dict_len = len(self.title_dict)
-
     def split_title(self, title):
         lt = len(title)
         tmp = []
@@ -119,67 +118,105 @@ class Lang():
 
 
 class RecommendationSystem():
-    def __init__(self, config, dict_size):
+    def __init__(self, config):
         self.config = config
-        self.dict_size = dict_size
 
-    def build(self):
+    def build(self, user_id_max, movie_id_max, title_dict_size):
         with tf.name_scope('Input'):
-            self.user_gender = tf.placeholder(tf.float32, [None, 2], name='gender')
-            self.user_age = tf.placeholder(tf.float32, [None, 7], name='age')
-            self.user_occupation = tf.placeholder(tf.float32, [None, 21], name='occupation')
-            self.movie_title = tf.placeholder(tf.int32, [None, None], name='title')
-            self.movie_title_len = tf.placeholder(tf.int32, [None], name='len')
-            self.movie_genres = tf.placeholder(tf.float32, [None, 18], name='genres')
-            self.rating = tf.placeholder(tf.float32, [None], name='rating')
-            self.keep_prob = tf.placeholder(tf.float32, name='keep_prob')
-            self.lr = tf.placeholder(tf.float32, name='learning_rate')
+            user_id = tf.placeholder(tf.int32, [None], name='user_id')
+            user_gender = tf.placeholder(tf.float32, [None, 2], name='gender')
+            user_age = tf.placeholder(tf.float32, [None, 7], name='age')
+            user_occupation = tf.placeholder(tf.float32, [None, 21], name='occupation')
+            movie_id = tf.placeholder(tf.int32, [None], name='movie_id')
+            movie_title = tf.placeholder(tf.int32, [None, None], name='title')
+            movie_title_len = tf.placeholder(tf.int32, [None], name='len')
+            movie_genres = tf.placeholder(tf.float32, [None, 18], name='genres')
+            rating = tf.placeholder(tf.float32, [None], name='rating')
+            keep_prob = tf.placeholder(tf.float32, name='keep_prob')
+            lr = tf.placeholder(tf.float32, name='lr')
 
         with tf.name_scope('user'):
-            user_feature1 = tf.layers.dense(tf.concat([self.user_gender, self.user_age, self.user_occupation], axis=1),
-                                            self.config.user_unit1, activation=tf.nn.relu)
+            user_id_embed_matrix = tf.Variable(
+                tf.random_uniform([user_id_max, self.config.user_id_embed_size], -1.0, 1.0))
+            user_id_feature = tf.nn.embedding_lookup(user_id_embed_matrix, user_id, name='user_id_embed')
+            user_feature1 = tf.layers.dense(
+                tf.concat([user_id_feature, user_gender, user_age, user_occupation], axis=1),
+                self.config.user_unit1, activation=tf.nn.relu)
             user_feature = tf.layers.dense(user_feature1, self.config.user_and_movie_unit, activation=tf.nn.relu,
                                            name='user_feature')
 
         with tf.name_scope('movie'):
-            movie_feature1 = tf.layers.dense(self.movie_genres, self.config.movie_unit1, activation=tf.nn.relu)
-            embed_matrix = tf.Variable(tf.random_uniform([self.dict_size, self.config.embed_size], -1.0, 1.0))
-            embed_title = tf.nn.embedding_lookup(embed_matrix, self.movie_title, name='embed_title')
+            movie_id_embed_matrix = tf.Variable(
+                tf.random_uniform([movie_id_max, self.config.movie_id_embed_size], -1.0, 1.0))
+            movie_id_feature = tf.nn.embedding_lookup(movie_id_embed_matrix, movie_id, name='movie_id_embed')
+            movie_feature1 = tf.layers.dense(tf.concat([movie_id_feature, movie_genres], axis=1),
+                                             self.config.movie_unit1, activation=tf.nn.relu)
+            title_embed_matrix = tf.Variable(
+                tf.random_uniform([title_dict_size, self.config.title_embed_size], -1.0, 1.0))
+            embed_title = tf.nn.embedding_lookup(title_embed_matrix, movie_title, name='embed_title')
             _, movie_feature2 = tf.nn.dynamic_rnn(
                 cell=tf.nn.rnn_cell.DropoutWrapper(tf.nn.rnn_cell.GRUCell(self.config.gru_unit),
-                                                   output_keep_prob=self.keep_prob),
+                                                   output_keep_prob=keep_prob),
                 inputs=embed_title,
-                sequence_length=self.movie_title_len,
+                sequence_length=movie_title_len,
                 dtype=tf.float32)
             movie_feature = tf.layers.dense(tf.concat([movie_feature1, movie_feature2], axis=1),
                                             self.config.user_and_movie_unit, activation=tf.nn.relu,
                                             name='movie_feature')
 
         with tf.name_scope('Inference'):
-            self.score = tf.add(tf.multiply(4.0, tf.sigmoid(
+            score = tf.add(tf.multiply(4.0, tf.sigmoid(
                 tf.reduce_sum(tf.multiply(user_feature, movie_feature), axis=1))), 1.0, name='score')
 
         with tf.name_scope('Loss'):
-            self.loss = tf.sqrt(tf.losses.mean_squared_error(self.score, self.rating), name='loss')
-            self.train_op = tf.train.AdamOptimizer(learning_rate=self.lr).minimize(self.loss)
+            loss = tf.sqrt(tf.losses.mean_squared_error(score, rating), name='loss')
+            optimizer = tf.train.AdamOptimizer(learning_rate=lr, name='optimizer')
+            train_op = optimizer.minimize(loss, name='train_op')
 
         if self.config.graph_write:
             writer = tf.summary.FileWriter('logs', graph=tf.get_default_graph(), filename_suffix='recommsys')
             writer.flush()
             writer.close()
 
+        sess = tf.Session()
+        sess.run(tf.global_variables_initializer())
+
+        saver = tf.train.Saver(max_to_keep=1)
+        if not os.path.exists(self.config.model_save_path):
+            os.makedirs(self.config.model_save_path)
+
+        saver.save(sess, self.config.model_save_path + 'rs1')
+        print('model saved successfully!')
+
     def train(self, lang):
+        sess = tf.Session()
+
+        new_saver = tf.train.import_meta_graph(self.config.model_save_path + 'rs1.meta')
+        new_saver.restore(sess, self.config.model_save_path + 'rs1')
+
+        graph = tf.get_default_graph()
+
+        user_id = graph.get_operation_by_name('Input/user_id').outputs[0]
+        user_gender = graph.get_operation_by_name('Input/gender').outputs[0]
+        user_age = graph.get_operation_by_name('Input/age').outputs[0]
+        user_occupation = graph.get_operation_by_name('Input/occupation').outputs[0]
+        movie_id = graph.get_operation_by_name('Input/movie_id').outputs[0]
+        movie_title = graph.get_operation_by_name('Input/title').outputs[0]
+        movie_title_len = graph.get_operation_by_name('Input/len').outputs[0]
+        movie_genres = graph.get_operation_by_name('Input/genres').outputs[0]
+        rating = graph.get_operation_by_name('Input/rating').outputs[0]
+
+        keep_prob = graph.get_operation_by_name('Input/keep_prob').outputs[0]
+        lr = graph.get_operation_by_name('Input/lr').outputs[0]
+
+        loss = graph.get_tensor_by_name('Loss/loss:0')
+        train_op = graph.get_operation_by_name('Loss/train_op')
+
         m_samples = np.shape(lang.ratings['rating'])[0]
 
         total_batch = m_samples // self.config.batch_size
 
         loss_ = []
-
-        sess = tf.Session()
-        sess.run(tf.global_variables_initializer())
-
-        saver = tf.train.Saver(max_to_keep=1)
-
         for epoch in range(1, self.config.epochs + 1):
             loss_epoch = 0.0
             for batch in range(total_batch):
@@ -205,14 +242,18 @@ class RecommendationSystem():
                 rating_batch = lang.ratings['rating'][
                                batch * self.config.batch_size:(batch + 1) * self.config.batch_size]
 
-                feed_dict = {self.user_gender: gender_batch, self.user_age: age_batch,
-                             self.user_occupation: occupation_batch,
-                             self.movie_title: title_batch, self.movie_title_len: title_len_batch,
-                             self.movie_genres: genres_batch,
-                             self.rating: rating_batch,
-                             self.keep_prob: self.config.keep_prob,
-                             self.lr: self.config.lr}
-                _, loss_batch = sess.run([self.train_op, self.loss], feed_dict=feed_dict)
+                feed_dict = {user_id: user_id_batch,
+                             user_gender: gender_batch,
+                             user_age: age_batch,
+                             user_occupation: occupation_batch,
+                             movie_id: movie_id_batch,
+                             movie_title: title_batch,
+                             movie_title_len: title_len_batch,
+                             movie_genres: genres_batch,
+                             rating: rating_batch,
+                             keep_prob: self.config.keep_prob,
+                             lr: self.config.lr}
+                _, loss_batch = sess.run([train_op, loss], feed_dict=feed_dict)
 
                 loss_epoch += loss_batch
             loss_.append(loss_epoch / total_batch)
@@ -226,19 +267,22 @@ class RecommendationSystem():
             lang.ratings['rating'] = lang.ratings['rating'][r]
 
             if epoch % self.config.per_save == 0:
-                saver.save(sess, self.config.model_save_path + 'rs1')
+                new_saver.save(sess, self.config.model_save_path + 'rs1')
                 print('Model saved successfully!')
 
-    def infer(self, lang, user_id):
+    def infer(self, lang, userid):
         sess = tf.Session()
+
         new_saver = tf.train.import_meta_graph(self.config.model_save_path + 'rs1.meta')
         new_saver.restore(sess, self.config.model_save_path + 'rs1')
 
         graph = tf.get_default_graph()
 
+        user_id = graph.get_operation_by_name('Input/user_id').outputs[0]
         user_gender = graph.get_operation_by_name('Input/gender').outputs[0]
         user_age = graph.get_operation_by_name('Input/age').outputs[0]
         user_occupation = graph.get_operation_by_name('Input/occupation').outputs[0]
+        movie_id = graph.get_operation_by_name('Input/movie_id').outputs[0]
         movie_title = graph.get_operation_by_name('Input/title').outputs[0]
         movie_title_len = graph.get_operation_by_name('Input/len').outputs[0]
         movie_genres = graph.get_operation_by_name('Input/genres').outputs[0]
@@ -248,7 +292,7 @@ class RecommendationSystem():
 
         len_movie = len(lang.movie_id_dict)
 
-        user_id_batch = user_id * np.ones(len_movie, dtype=np.int32)
+        user_id_batch = userid * np.ones(len_movie, dtype=np.int32)
         movie_id_batch = lang.movies['movie_id']
 
         user_batch = np.array([lang.user_id_dict[i] for i in user_id_batch])
@@ -262,9 +306,13 @@ class RecommendationSystem():
         title_len_batch = lang.movies['title_len'][movie_batch]
         genres_batch = lang.movies['genres'][movie_batch]
 
-        feed_dict = {user_gender: gender_batch, user_age: age_batch,
+        feed_dict = {user_id: user_id_batch,
+                     user_gender: gender_batch,
+                     user_age: age_batch,
                      user_occupation: occupation_batch,
-                     movie_title: title_batch, movie_title_len: title_len_batch,
+                     movie_id: movie_id_batch,
+                     movie_title: title_batch,
+                     movie_title_len: title_len_batch,
                      movie_genres: genres_batch,
                      keep_prob: 1.0}
         score_ = sess.run(score, feed_dict=feed_dict)
@@ -272,18 +320,25 @@ class RecommendationSystem():
         score_top_k = -np.sort(-score_)[:self.config.top_k]
         index_top_k = np.argsort(-score_)
         for i in range(self.config.top_k):
-            print('%5d %50s %40s     %.1f' % (
+            title_i = lang.movies_table['title'][index_top_k[i]]
+            genres_i = lang.movies_table['genres'][index_top_k[i]]
+            print('%5d %50s %40s     %.9f' % (
                 lang.movies_table['movie_id'][index_top_k[i]],
-                lang.movies_table['title'][index_top_k[i]],
-                lang.movies_table['genres'][index_top_k[i]],
+                title_i if len(title_i) <= 50 else title_i[:50],
+                genres_i if len(genres_i) <= 40 else genres_i[:40],
                 score_top_k[i]))
 
 
 def main(unused_argv):
     lang = Lang(CONFIG)
-    rs = RecommendationSystem(CONFIG, lang.dict_len)
-    if CONFIG.mode == 'train':
-        rs.build()
+    rs = RecommendationSystem(CONFIG)
+    if CONFIG.mode == 'train0':
+        user_id_max = np.max(lang.users['user_id'])
+        movie_id_max = np.max(lang.movies['movie_id'])
+        title_dict_size = len(lang.title_dict)
+        rs.build(user_id_max + 1, movie_id_max + 1, title_dict_size)
+        rs.train(lang)
+    elif CONFIG.mode == 'train1':
         rs.train(lang)
     elif CONFIG.mode == 'infer':
         rs.infer(lang, 1)
