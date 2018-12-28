@@ -8,3 +8,5 @@ The part of Sentiment Analysis is using GRUs to help to analyze whether the sent
 The project of recommendation system uses GRU and MovieLens data set to complete the task of movie recommendation. 
 
 The Speech Recognition project realizes a simple speech recognition using GRU and vedio files recording numbers from zero to nine.
+
+The project of chatbot retrieval also realizes a chatbot, however, it focuses on some special industries such as banking and insurance industry where answering for querying is relatively fixed to some extent. Therefore the project applies the so called 'dual encoder LSTM model' based on retrieval to build the above system.
