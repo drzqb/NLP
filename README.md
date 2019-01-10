@@ -12,3 +12,5 @@ The Speech Recognition project realizes a simple speech recognition using GRU an
 The project of chatbot retrieval also realizes a chatbot, however, it focuses on some special industries such as banking and insurance industry where answering for querying is relatively fixed to some extent. Therefore the project applies the so called 'dual encoder LSTM model' based on retrieval to build the above system.
 
 The project of PosTagger realizes POS Tagging based on deep learning using bidirectional lstm network and the data set we uses is the annotated corpus in People's Daily in January 1998.
+
+NLI project completes a simple natural language inference target based on decomposable attention model using snli data set released by Standford University.
