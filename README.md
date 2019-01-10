@@ -13,4 +13,4 @@ The project of chatbot retrieval also realizes a chatbot, however, it focuses on
 
 The project of PosTagger realizes POS Tagging based on deep learning using bidirectional lstm network and the data set we uses is the annotated corpus in People's Daily in January 1998.
 
-NLI project completes a simple natural language inference target based on decomposable attention model using snli data set released by Standford University.
+NLI project completes a simple natural language inference target based on decomposable attention model using snli data set released by Standford University and pretrained Glove word vectors.
