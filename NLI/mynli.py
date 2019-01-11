@@ -9,11 +9,15 @@ EMBED_SIZE = 50
 
 tf.flags.DEFINE_integer('batch_size', 100, 'batch size for training')
 tf.flags.DEFINE_integer('epochs', 500000, 'number of iterations')
-tf.flags.DEFINE_integer('rnn_size', 64, 'size of feedforward net F')
-tf.flags.DEFINE_float('keep_prob', 0.5, 'keep probility for rnn outputs')
-tf.flags.DEFINE_integer('G_size', 64, 'size of feedforward net G')
+tf.flags.DEFINE_integer('rnn_size', 128, 'size of feedforward net F')
+tf.flags.DEFINE_integer('rnn_layer', 3, 'number of layers for rnn')
+tf.flags.DEFINE_float('keep_prob', 0.65, 'keep probility for rnn outputs')
+tf.flags.DEFINE_integer('G_size', 256, 'size of feedforward net G')
+tf.flags.DEFINE_integer('G_layer', 3, 'number of Dense G layers')
+tf.flags.DEFINE_integer('H_size', 512, 'size of feedforward net H')
+tf.flags.DEFINE_integer('H_layer', 3, 'number of Dense H layers')
 tf.flags.DEFINE_string('model_save_path', 'model/', 'directory of model file saved')
-tf.flags.DEFINE_float('lr', 0.01, 'learning rate for training')
+tf.flags.DEFINE_float('lr', 0.001, 'learning rate for training')
 tf.flags.DEFINE_float('grad_clip', 1.0, 'clip for grad based on norm')
 tf.flags.DEFINE_integer('per_save', 5000, 'save model once every per_save iterations')
 tf.flags.DEFINE_string('mode', 'train0', 'The mode of train or predict as follows: '
@@ -85,10 +89,12 @@ class NLI():
             h_embed = tf.nn.embedding_lookup(embed_matrix12, h, name='h_embed')
 
         with tf.name_scope('birnn'):
-            rnn_fw = tf.nn.rnn_cell.DropoutWrapper(tf.nn.rnn_cell.GRUCell(self.config.rnn_size, name='fw'),
-                                                   output_keep_prob=keep_prob)
-            rnn_bw = tf.nn.rnn_cell.DropoutWrapper(tf.nn.rnn_cell.GRUCell(self.config.rnn_size, name='bw'),
-                                                   output_keep_prob=keep_prob)
+            rnn_fw = tf.nn.rnn_cell.MultiRNNCell([tf.nn.rnn_cell.DropoutWrapper(
+                tf.nn.rnn_cell.GRUCell(self.config.rnn_size, name='fw' + str(i)), output_keep_prob=keep_prob) for i in
+                range(self.config.rnn_layer)])
+            rnn_bw = tf.nn.rnn_cell.MultiRNNCell([tf.nn.rnn_cell.DropoutWrapper(
+                tf.nn.rnn_cell.GRUCell(self.config.rnn_size, name='bw' + str(i)), output_keep_prob=keep_prob) for i in
+                range(self.config.rnn_layer)])
 
             p_outputs, _ = tf.nn.bidirectional_dynamic_rnn(rnn_fw,
                                                            rnn_bw,
@@ -108,7 +114,8 @@ class NLI():
             j = tf.constant(0, tf.int32)
             pv = tf.constant(0.0, shape=[0, self.config.G_size])
             hv = tf.constant(0.0, shape=[0, self.config.G_size])
-            G = tf.layers.Dense(self.config.G_size, activation=tf.nn.relu, name='G')
+
+            G = [tf.layers.Dense(self.config.G_size, activation=tf.nn.relu, name='G%d'%i) for i in range(self.config.G_layer)]
 
             def cond(j, pv, hv):
                 return tf.less(j, tf.shape(p)[0])
@@ -122,11 +129,14 @@ class NLI():
                 p_wave = tf.matmul(h_weight, h_embed[j, :h_len[j]])
                 h_wave = tf.matmul(p_weight, p_embed[j, :p_len[j]])
 
-                cpv = G(tf.concat([p_embed[j, :p_len[j]], p_wave], axis=-1))
-                chv = G(tf.concat([h_embed[j, :h_len[j]], h_wave], axis=-1))
+                cpv=tf.concat([p_embed[j, :p_len[j]], p_wave], axis=-1)
+                chv=tf.concat([h_embed[j, :h_len[j]], h_wave], axis=-1)
+                for i in range(self.config.G_layer):
+                    cpv=G[i](cpv)
+                    chv=G[i](chv)
 
-                jpv = tf.expand_dims(tf.reduce_sum(cpv, axis=0), axis=0)
-                jhv = tf.expand_dims(tf.reduce_sum(chv, axis=0), axis=0)
+                jpv = tf.expand_dims(tf.reduce_mean(cpv, axis=0), axis=0)
+                jhv = tf.expand_dims(tf.reduce_mean(chv, axis=0), axis=0)
 
                 pv = tf.concat([pv, jpv], axis=0)
                 hv = tf.concat([hv, jhv], axis=0)
@@ -136,7 +146,13 @@ class NLI():
                                                                 tf.TensorShape([None, self.config.G_size]),
                                                                 tf.TensorShape([None, self.config.G_size])])
         with tf.name_scope('classify'):
-            prediction = tf.layers.dense(tf.concat([pv, hv], axis=-1), self.l_dict_len, name='prediction')
+            H = [tf.layers.Dense(self.config.H_size, activation=tf.nn.relu, name='H%d'%i) for i in range(self.config.H_layer)]
+
+            cph=tf.concat([pv, hv], axis=-1)
+            for i in range(self.config.H_layer):
+                cph=H[i](cph)
+
+            prediction = tf.layers.dense(cph, self.l_dict_len, name='prediction')
 
         with tf.name_scope('loss'):
             accuracy = tf.reduce_mean(
@@ -145,7 +161,7 @@ class NLI():
             loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=l, logits=prediction),
                                   name='loss')
 
-            optimizer = tf.train.AdamOptimizer(learning_rate=self.config.lr, name='optimizer')
+            optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config.lr, name='optimizer')
             train_variables = tf.trainable_variables()
             grads_vars = optimizer.compute_gradients(loss, train_variables)
             for i, (grad, var) in enumerate(grads_vars):
@@ -160,11 +176,15 @@ class NLI():
         sess = tf.Session()
         sess.run(tf.global_variables_initializer())
 
+        number_trainable_variables = 0
         variable_names = [v.name for v in tf.trainable_variables()]
         values = sess.run(variable_names)
         for k, v in zip(variable_names, values):
             print("Variable: ", k)
             print("Shape: ", v.shape)
+            number_trainable_variables += np.prod([s for s in v.shape])
+
+        print('Number of parameters: %d' % number_trainable_variables)
 
         saver = tf.train.Saver(max_to_keep=1)
         saver.save(sess, self.config.model_save_path + 'mynli')
@@ -207,7 +227,8 @@ class NLI():
                          l: train_batch_[2],
                          p_len: train_batch_[3],
                          h_len: train_batch_[4],
-                         keep_prob: self.config.keep_prob
+                         # keep_prob: self.config.keep_prob
+                         keep_prob: 1.0
                          }
             loss_batch, _, acc_batch = sess.run([loss, train_op, accuracy], feed_dict=feed_dict)
             loss_.append(loss_batch)
