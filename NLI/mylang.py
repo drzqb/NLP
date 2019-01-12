@@ -4,7 +4,8 @@ from nltk.tokenize import WordPunctTokenizer
 import pickle
 import numpy as np
 
-GLOVE_SIZE=[400000,50]
+GLOVE_SIZE = [400000, 100]
+
 
 class Lang():
     def __init__(self):
@@ -12,18 +13,18 @@ class Lang():
         with open('data/label_dict.txt', 'wb') as f:
             pickle.dump(self.label_dict, f)
 
-        print('\ncreating word dict using pretrained glove vector...')
+        print('\ncreating word dict using pretrained glove vector ...')
         self.create_dict()
 
-        print('\npreprocessing train data...')
+        print('\npreprocessing train data ...')
         phl = self.read_json('data/snli_1.0_train.jsonl', 500000)
         self.sen2id(phl, 'train')
 
-        print('\npreprocessing valid data...')
+        print('\npreprocessing valid data ...')
         phl = self.read_json('data/snli_1.0_val.jsonl', 1000)
         self.sen2id(phl, 'val')
 
-        print('\npreprocessing test data...')
+        print('\npreprocessing test data ...')
         phl = self.read_json('data/snli_1.0_test.jsonl', 1000)
         self.sen2id(phl, 'test')
 
@@ -66,7 +67,7 @@ class Lang():
         self.word_dict = dict()
         self.word_dict['<pad>'] = 0
         self.word_dict['<unk>'] = 1
-        with open('data/glove.6B.50d.txt', 'r') as f:
+        with open('data/glove.6B.100d.txt', 'r',encoding='utf-8') as f:
             for line in f.readlines():
                 tmp = line.split(' ')
                 embed_matrix[len(self.word_dict) - 2] = np.array([float(t) for t in tmp[1:]])
@@ -85,13 +86,16 @@ class Lang():
         k = 0
         with open(filename, 'r') as f:
             for line in f.readlines():
-                load_dict = json.loads(line)
-                tmp = load_dict['gold_label']
-                if tmp != '-' and k <= kmax:
-                    p.append(load_dict['sentence1'])
-                    h.append(load_dict['sentence2'])
-                    l.append(tmp)
-                    k += 1
+                if k <= kmax:
+                    load_dict = json.loads(line)
+                    tmp = load_dict['gold_label']
+                    if tmp != '-':
+                        p.append(WordPunctTokenizer().tokenize(load_dict['sentence1'].lower()))
+                        h.append(WordPunctTokenizer().tokenize(load_dict['sentence2'].lower()))
+                        l.append(tmp)
+                        k += 1
+                else:
+                    break
         return p, h, l
 
 
