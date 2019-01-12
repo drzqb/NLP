@@ -5,7 +5,7 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 
-EMBED_SIZE = 50
+EMBED_SIZE = 100
 
 tf.flags.DEFINE_integer('batch_size', 100, 'batch size for training')
 tf.flags.DEFINE_integer('epochs', 500000, 'number of iterations')
@@ -14,7 +14,7 @@ tf.flags.DEFINE_integer('rnn_layer', 3, 'number of layers for rnn')
 tf.flags.DEFINE_float('keep_prob', 0.65, 'keep probility for rnn outputs')
 tf.flags.DEFINE_integer('G_size', 256, 'size of feedforward net G')
 tf.flags.DEFINE_integer('G_layer', 3, 'number of Dense G layers')
-tf.flags.DEFINE_integer('H_size', 512, 'size of feedforward net H')
+tf.flags.DEFINE_integer('H_size', 256, 'size of feedforward net H')
 tf.flags.DEFINE_integer('H_layer', 3, 'number of Dense H layers')
 tf.flags.DEFINE_string('model_save_path', 'model/', 'directory of model file saved')
 tf.flags.DEFINE_float('lr', 0.001, 'learning rate for training')
@@ -115,7 +115,8 @@ class NLI():
             pv = tf.constant(0.0, shape=[0, self.config.G_size])
             hv = tf.constant(0.0, shape=[0, self.config.G_size])
 
-            G = [tf.layers.Dense(self.config.G_size, activation=tf.nn.relu, name='G%d'%i) for i in range(self.config.G_layer)]
+            G = [tf.layers.Dense(self.config.G_size, activation=tf.nn.relu, name='G%d' % i) for i in
+                 range(self.config.G_layer)]
 
             def cond(j, pv, hv):
                 return tf.less(j, tf.shape(p)[0])
@@ -129,11 +130,11 @@ class NLI():
                 p_wave = tf.matmul(h_weight, h_embed[j, :h_len[j]])
                 h_wave = tf.matmul(p_weight, p_embed[j, :p_len[j]])
 
-                cpv=tf.concat([p_embed[j, :p_len[j]], p_wave], axis=-1)
-                chv=tf.concat([h_embed[j, :h_len[j]], h_wave], axis=-1)
+                cpv = tf.concat([p_embed[j, :p_len[j]], p_wave], axis=-1)
+                chv = tf.concat([h_embed[j, :h_len[j]], h_wave], axis=-1)
                 for i in range(self.config.G_layer):
-                    cpv=G[i](cpv)
-                    chv=G[i](chv)
+                    cpv = G[i](cpv)
+                    chv = G[i](chv)
 
                 jpv = tf.expand_dims(tf.reduce_mean(cpv, axis=0), axis=0)
                 jhv = tf.expand_dims(tf.reduce_mean(chv, axis=0), axis=0)
@@ -146,19 +147,20 @@ class NLI():
                                                                 tf.TensorShape([None, self.config.G_size]),
                                                                 tf.TensorShape([None, self.config.G_size])])
         with tf.name_scope('classify'):
-            H = [tf.layers.Dense(self.config.H_size, activation=tf.nn.relu, name='H%d'%i) for i in range(self.config.H_layer)]
+            H = [tf.layers.Dense(self.config.H_size, activation=tf.nn.relu, name='H%d' % i) for i in
+                 range(self.config.H_layer)]
 
-            cph=tf.concat([pv, hv], axis=-1)
+            cph = tf.concat([pv, hv, tf.abs(pv - hv)], axis=-1)
             for i in range(self.config.H_layer):
-                cph=H[i](cph)
+                cph = H[i](cph)
 
-            prediction = tf.layers.dense(cph, self.l_dict_len, name='prediction')
+            logits = tf.identity(tf.layers.dense(cph, self.l_dict_len, name='project'), name='logits')
+            prediction = tf.argmax(logits, axis=-1, output_type=tf.int32, name='prediction')
 
         with tf.name_scope('loss'):
-            accuracy = tf.reduce_mean(
-                tf.cast(tf.equal(tf.argmax(prediction, axis=-1, output_type=tf.int32), l), tf.float32), name='accuracy')
+            accuracy = tf.reduce_mean(tf.cast(tf.equal(prediction, l), tf.float32), name='accuracy')
 
-            loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=l, logits=prediction),
+            loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=l, logits=logits),
                                   name='loss')
 
             optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config.lr, name='optimizer')
@@ -227,8 +229,7 @@ class NLI():
                          l: train_batch_[2],
                          p_len: train_batch_[3],
                          h_len: train_batch_[4],
-                         # keep_prob: self.config.keep_prob
-                         keep_prob: 1.0
+                         keep_prob: self.config.keep_prob
                          }
             loss_batch, _, acc_batch = sess.run([loss, train_op, accuracy], feed_dict=feed_dict)
             loss_.append(loss_batch)
