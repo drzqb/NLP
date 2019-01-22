@@ -15,16 +15,16 @@ tf.flags.DEFINE_integer('block', 1, 'number of Encoder submodel')
 tf.flags.DEFINE_integer('head', 10, 'number of multi_head attention')
 tf.flags.DEFINE_integer('batch_size', 100, 'batch size for training')
 tf.flags.DEFINE_integer('epochs', 100000, 'number of iterations')
-tf.flags.DEFINE_float('keep_prob', 1.0, 'keep probility for rnn outputs')
-tf.flags.DEFINE_integer('F_size', 32, 'size of feedforward net F')
+tf.flags.DEFINE_float('keep_prob', 0.8, 'keep probility for rnn outputs')
+tf.flags.DEFINE_integer('F_size', 128, 'size of feedforward net F')
 tf.flags.DEFINE_integer('F_layer', 3, 'number of Dense F layers')
-tf.flags.DEFINE_integer('G_size', 32, 'size of feedforward net G')
+tf.flags.DEFINE_integer('G_size', 128, 'size of feedforward net G')
 tf.flags.DEFINE_integer('G_layer', 3, 'number of Dense G layers')
-tf.flags.DEFINE_integer('H_size', 32, 'size of feedforward net H')
+tf.flags.DEFINE_integer('H_size', 128, 'size of feedforward net H')
 tf.flags.DEFINE_integer('H_layer', 3, 'number of Dense H layers')
 tf.flags.DEFINE_string('model_save_path', 'model/', 'directory of model file saved')
 tf.flags.DEFINE_float('lr', 0.001, 'learning rate for training')
-tf.flags.DEFINE_float('grad_clip', 1.0, 'clip for grad based on norm')
+tf.flags.DEFINE_float('grad_clip', 5.0, 'clip for grad based on norm')
 tf.flags.DEFINE_integer('per_save', 1000, 'save model once every per_save iterations')
 tf.flags.DEFINE_string('mode', 'train0', 'The mode of train or predict as follows: '
                                          'train0: train first time or retrain'
@@ -60,7 +60,7 @@ def single_example_parser(serialized_example):
     return p, h, l, p_len, h_len
 
 
-def batched_data(tfrecord_filename, single_example_parser, batch_size, padded_shapes, buffer_size=10000,
+def batched_data(tfrecord_filename, single_example_parser, batch_size, padded_shapes, buffer_size=2000,
                  shuffle=True):
     dataset = tf.data.TFRecordDataset(tfrecord_filename) \
         .map(single_example_parser) \
@@ -108,7 +108,7 @@ class NLI():
         with tf.name_scope('embedding'):
             embed_matrix1 = tf.Variable(tf.random_uniform([2, EMBED_SIZE], -1.0, 1.0),
                                         dtype=tf.float32)
-            embed_matrix2 = tf.Variable(tf.constant(embed_matrix, dtype=tf.float32), trainable=False)
+            embed_matrix2 = tf.Variable(tf.constant(embed_matrix, dtype=tf.float32))
             embed_matrix12 = tf.concat([embed_matrix1, embed_matrix2], axis=0, name='embed_matrix')
             p_embed = tf.nn.embedding_lookup(embed_matrix12, p, name='p_embed')
             h_embed = tf.nn.embedding_lookup(embed_matrix12, h, name='h_embed')
@@ -121,17 +121,14 @@ class NLI():
 
         for block in range(self.config.block):
             with tf.name_scope('selfattention' + str(block)):
-                WQ = [tf.layers.Dense(EMBED_SIZE / self.config.head, use_bias=False, name='Q' + str(block) + str(i))
-                      for i in range(self.config.head)]
-                WK = [tf.layers.Dense(EMBED_SIZE / self.config.head, use_bias=False, name='K' + str(block) + str(i))
-                      for i in range(self.config.head)]
-                WV = [tf.layers.Dense(EMBED_SIZE / self.config.head, use_bias=False, name='V' + str(block) + str(i))
-                      for i in range(self.config.head)]
+                WQ = tf.layers.Dense(EMBED_SIZE, use_bias=False, name='Q' + str(block))
+                WK = tf.layers.Dense(EMBED_SIZE, use_bias=False, name='K' + str(block))
+                WV = tf.layers.Dense(EMBED_SIZE, use_bias=False, name='V' + str(block))
                 WO = tf.layers.Dense(EMBED_SIZE, use_bias=False, name='O' + str(block))
 
-                Q = [WQ[i](now_p) for i in range(self.config.head)]
-                K = [WK[i](now_p) for i in range(self.config.head)]
-                V = [WV[i](now_p) for i in range(self.config.head)]
+                Q = tf.split(WQ(now_p), self.config.head, axis=-1)
+                K = tf.split(WK(now_p), self.config.head, axis=-1)
+                V = tf.split(WV(now_p), self.config.head, axis=-1)
 
                 QK = [tf.matmul(Q[i], tf.transpose(K[i], [0, 2, 1])) / tf.sqrt(EMBED_SIZE / self.config.head) for i in
                       range(self.config.head)]
@@ -140,9 +137,9 @@ class NLI():
                     [tf.matmul(tf.nn.softmax(tf.where(padding_mask_p, QK[i], QKF[i]), axis=-1), V[i]) for i in
                      range(self.config.head)], axis=-1)), keep_prob)
 
-                Q = [WQ[i](now_h) for i in range(self.config.head)]
-                K = [WK[i](now_h) for i in range(self.config.head)]
-                V = [WV[i](now_h) for i in range(self.config.head)]
+                Q = tf.split(WQ(now_h), self.config.head, axis=-1)
+                K = tf.split(WK(now_h), self.config.head, axis=-1)
+                V = tf.split(WV(now_h), self.config.head, axis=-1)
 
                 QK = [tf.matmul(Q[i], tf.transpose(K[i], [0, 2, 1])) / tf.sqrt(EMBED_SIZE / self.config.head) for i in
                       range(self.config.head)]
@@ -177,8 +174,8 @@ class NLI():
             F = [tf.layers.Dense(self.config.F_size, activation=tf.nn.relu, name='F%d' % i) for i in
                  range(self.config.F_layer)]
             for i in range(self.config.F_layer):
-                p_input = F[i](p_input)
-                h_input = F[i](h_input)
+                p_input = tf.nn.dropout(F[i](p_input), keep_prob)
+                h_input = tf.nn.dropout(F[i](h_input), keep_prob)
 
             attmatrix = tf.matmul(p_input, tf.transpose(h_input, [0, 2, 1]), name='attmatrix')
             attmatrix_pf = tf.ones_like(attmatrix) * (1. - 2. ** 31.)
@@ -195,8 +192,8 @@ class NLI():
             cpv = tf.concat([now_p, p_wave], axis=-1)
             chv = tf.concat([now_h, h_wave], axis=-1)
             for i in range(self.config.G_layer):
-                cpv = G[i](cpv)
-                chv = G[i](chv)
+                cpv = tf.nn.dropout(G[i](cpv), keep_prob)
+                chv = tf.nn.dropout(G[i](chv), keep_prob)
 
         with tf.name_scope('integrate'):
             cpvf = tf.zeros_like(cpv)
@@ -213,7 +210,7 @@ class NLI():
 
             cph = tf.concat([pv, hv, tf.abs(pv - hv)], axis=-1)
             for i in range(self.config.H_layer):
-                cph = H[i](cph)
+                cph = tf.nn.dropout(H[i](cph), keep_prob)
 
             logits = tf.identity(tf.layers.dense(cph, self.l_dict_len, name='project'), name='logits')
             prediction = tf.argmax(logits, axis=-1, output_type=tf.int32, name='prediction')
