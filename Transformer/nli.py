@@ -11,11 +11,11 @@ import matplotlib.pyplot as plt
 EMBED_SIZE = 300
 
 tf.flags.DEFINE_integer('maxword', 100, 'max length of any sentences')
-tf.flags.DEFINE_integer('block', 1, 'number of Encoder submodel')
+tf.flags.DEFINE_integer('block', 2, 'number of Encoder submodel')
 tf.flags.DEFINE_integer('head', 10, 'number of multi_head attention')
 tf.flags.DEFINE_integer('batch_size', 100, 'batch size for training')
 tf.flags.DEFINE_integer('epochs', 100000, 'number of iterations')
-tf.flags.DEFINE_float('keep_prob', 0.8, 'keep probility for rnn outputs')
+tf.flags.DEFINE_float('keep_prob', 0.9, 'keep probility for rnn outputs')
 tf.flags.DEFINE_integer('F_size', 128, 'size of feedforward net F')
 tf.flags.DEFINE_integer('F_layer', 3, 'number of Dense F layers')
 tf.flags.DEFINE_integer('G_size', 128, 'size of feedforward net G')
@@ -31,6 +31,10 @@ tf.flags.DEFINE_string('mode', 'train0', 'The mode of train or predict as follow
                                          'train1: continue train'
                                          'predict: predict')
 CONFIG = tf.flags.FLAGS
+
+
+def label_smoothing(inputs, K=3, epsilon=0.1):
+    return ((1 - epsilon) * inputs) + (epsilon / K)
 
 
 def single_example_parser(serialized_example):
@@ -218,8 +222,10 @@ class NLI():
         with tf.name_scope('loss'):
             accuracy = tf.reduce_mean(tf.cast(tf.equal(prediction, label), tf.float32), name='accuracy')
 
-            loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=label, logits=logits),
-                                  name='loss')
+            loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(
+                labels=label_smoothing(tf.one_hot(label, depth=self.l_dict_len)),
+                logits=logits),
+                name='loss')
 
             optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config.lr, name='optimizer')
             train_variables = tf.trainable_variables()
