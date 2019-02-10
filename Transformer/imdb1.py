@@ -11,14 +11,14 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 CLASSIFY = 2
 
 tf.flags.DEFINE_integer('maxword', 100, 'max length of any sentences')
-tf.flags.DEFINE_integer('block', 2, 'number of Encoder submodel')
+tf.flags.DEFINE_integer('block', 6, 'number of Encoder submodel')
 tf.flags.DEFINE_integer('head', 8, 'number of multi_head attention')
 
 tf.flags.DEFINE_integer('embedding_size', 200, 'size of dense representation of word')
-tf.flags.DEFINE_float('keep_prob', 0.5, 'keep probility for rnn outputs')
-tf.flags.DEFINE_integer('epochs', 20, 'number of iteration')
+tf.flags.DEFINE_float('keep_prob', 0.9, 'keep probility for rnn outputs')
+tf.flags.DEFINE_integer('epochs', 200, 'number of iteration')
 tf.flags.DEFINE_integer('batch_size', 128, 'batch size')
-tf.flags.DEFINE_float('lr', 0.001, 'learning rate')
+tf.flags.DEFINE_float('lr', 0.0001, 'learning rate')
 tf.flags.DEFINE_string('data', 'imdb.npz', 'directory of imdb data file')
 FLAGS = tf.flags.FLAGS
 
@@ -45,7 +45,7 @@ def softmax(A, Mask):
     '''
     :param A: B*ML1*ML2
     :param Mask: B*ML1*ML2
-    :return: C
+    :return: C: B*ML1*ML2
     '''
     C = tf.exp(A)
     Cf = tf.zeros_like(C)
@@ -117,14 +117,14 @@ def build_model(vocab_size):
             V = tf.concat(tf.split(WV(now), FLAGS.head, axis=-1), axis=0)
 
             QK = tf.matmul(Q, tf.transpose(K, [0, 2, 1])) / tf.sqrt(FLAGS.embedding_size / FLAGS.head)
-            Z = tf.nn.dropout(WO(tf.concat(
+            Z = WO(tf.concat(
                 tf.split(tf.matmul(softmax(QK, padding_mask), V), FLAGS.head,
-                         axis=0), axis=-1)), keep_prob)
+                         axis=0), axis=-1))
             scale_sa = tf.get_variable('scale_sa',
                                        initializer=tf.ones([FLAGS.embedding_size], dtype=tf.float32))
             bias_sa = tf.get_variable('bias_sa',
                                       initializer=tf.zeros([FLAGS.embedding_size], dtype=tf.float32))
-            now = layer_norm_compute(now + Z, scale_sa, bias_sa)
+            now = tf.nn.dropout(layer_norm_compute(now + Z, scale_sa, bias_sa), keep_prob)
         with tf.variable_scope('feedforward' + str(block)):
             ffrelu = tf.layers.Dense(4 * FLAGS.embedding_size, activation=tf.nn.relu, name='ffrelu')
             ff = tf.layers.Dense(FLAGS.embedding_size, name='ff')
@@ -132,7 +132,7 @@ def build_model(vocab_size):
                                        initializer=tf.ones([FLAGS.embedding_size], dtype=tf.float32))
             bias_ff = tf.get_variable('bias_ff',
                                       initializer=tf.zeros([FLAGS.embedding_size], dtype=tf.float32))
-            now = layer_norm_compute(ff(ffrelu(now)) + now, scale_ff, bias_ff)
+            now = tf.nn.dropout(layer_norm_compute(ff(ffrelu(now)) + now, scale_ff, bias_ff), keep_prob)
 
     with tf.name_scope('Project'):
         output = tf.layers.dense(now, CLASSIFY)
@@ -203,13 +203,14 @@ def train():
             sys.stdout.write('\r>> %d/%d | %d/%d | loss_batch: %.9f acc_batch: %.2f%%' % (
                 epoch, FLAGS.epochs, batch + 1, total_batch, loss_batch, 100.0 * acc_batch))
             sys.stdout.flush()
+            # print(predict_)
 
         loss_.append(loss_epoch / total_batch)
         acc_.append(acc_epoch / total_batch)
 
         feed_dict = {x: x_test_batch, s: y_test_batch, pos: pos_enc, keep_prob: 1.0}
         acc = sess.run(accuracy, feed_dict)
-        sys.stdout.write('    train_loss: %.9f train_acc: %.2f%%  test_acc: %.2f%%\n' % (
+        sys.stdout.write('   | train_loss: %.9f train_acc: %.2f%%  | test_acc: %.2f%%\n' % (
             loss_[-1], 100.0 * acc_[-1], 100.0 * acc))
         sys.stdout.flush()
 
