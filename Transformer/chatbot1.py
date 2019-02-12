@@ -9,17 +9,17 @@ import pickle
 import os
 import jieba
 
-tf.flags.DEFINE_integer('maxword', 50, 'max length of any sentences')
-tf.flags.DEFINE_integer('block', 2, 'number of Encoder submodel')
+tf.flags.DEFINE_integer('maxword', 30, 'max length of any sentences')
+tf.flags.DEFINE_integer('block', 1, 'number of Encoder submodel')
 tf.flags.DEFINE_integer('head', 8, 'number of multi_head attention')
 
 tf.flags.DEFINE_string('model_save_path', 'model/', 'The path where model shall be saved')
 tf.flags.DEFINE_integer('batch_size', 128, 'Batch size during training')
 tf.flags.DEFINE_integer('epochs', 50000, 'Epochs during training')
-tf.flags.DEFINE_float('lr', 0.0001, 'Initial learing rate')
-tf.flags.DEFINE_integer('embedding_qa_size', 512, 'Embedding size for english words')
+tf.flags.DEFINE_float('lr', 0.001, 'Initial learing rate')
+tf.flags.DEFINE_integer('embedding_qa_size', 200, 'Embedding size for words')
 tf.flags.DEFINE_boolean('graph_write', True, 'whether the compute graph is written to logs file')
-tf.flags.DEFINE_float('keep_prob', 0.5, 'The probility used to dropout')
+tf.flags.DEFINE_float('keep_prob', 0.9, 'The probility used to dropout')
 tf.flags.DEFINE_string('mode', 'train0', 'The mode of train or predict as follows: '
                                          'train0: train first time or retrain'
                                          'train1: continue train'
@@ -223,9 +223,8 @@ class Transformer():
                     return tf.less(k, max_decoder_length)
 
                 def body(k, decoder_infer_inputs, decoder_infer_outputs):
-                    decoder_infer = tf.concat([tf.nn.embedding_lookup(embedding_matrix, decoder_infer_inputs),
-                                               tf.tile(tf.expand_dims(decoder_pos[:(k + 1)], 0),
-                                                       [tf.shape(decoder_length)[0], 1, 1])], axis=-1)
+                    decoder_infer = tf.nn.embedding_lookup(embedding_matrix, decoder_infer_inputs) + decoder_pos[
+                                                                                                     :(k + 1)]
                     padding_mask_decoder_infer = tf.tile(tf.expand_dims(tf.greater(decoder_infer_inputs, 0), 1),
                                                          [self.config.head, tf.shape(decoder_infer_inputs)[1], 1])
                     future_mask_infer = tf.tile(
@@ -406,7 +405,7 @@ class Transformer():
 
         prediction_infer = graph.get_tensor_by_name('Loss/prediction_infer:0')
 
-        test = ['你真好', '吃完饭去干什么呢？']
+        test = ['你好', '吃饭了吗']
         test_strip = [jieba.lcut(test[i]) for i in range(len(test))]
         test_len = [len(test_strip[i]) for i in range(len(test))]
         print(test_len)
