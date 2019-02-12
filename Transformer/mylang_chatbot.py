@@ -35,8 +35,8 @@ class Lang():
         print('jieba...')
         k = 1
         for sl in s[:]:
-            # if k == 20001:
-            #     break
+            if k == 20001:
+                break
             if sl.startswith('M '):
                 sl = sl.strip('M ')
                 if sl == '':
@@ -52,7 +52,7 @@ class Lang():
         tmp_q = self.raw_q.copy()
         tmp_a = self.raw_a.copy()
         for i in reversed(range(len(tmp_q))):
-            if len(tmp_q[i]) > 50 or len(tmp_a[i]) >= 50:
+            if len(tmp_q[i]) > 20 or len(tmp_a[i]) >= 20:
                 self.raw_q.pop(i)
                 self.raw_a.pop(i)
 
