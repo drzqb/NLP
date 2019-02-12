@@ -346,7 +346,7 @@ class Usr():
 
             result = []
             decoder_input = torch.from_numpy(qa_dict['<GO>'] * np.ones([1, 1], dtype=np.int64))
-            decoder_state = final_state[:, i:i + 1]
+            decoder_state = final_state[:, 0:1]
             H = encoder_output[0:1, :x_test_input_batch_length[0]]
             for j in range(y_test_input_batch_length[0]):
                 decoder_output, decoder_state = attndecoder(decoder_input,
