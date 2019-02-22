@@ -13,12 +13,12 @@ import pickle
 
 tf.flags.DEFINE_string('model_save_path', 'model/', 'The path where model shall be saved')
 tf.flags.DEFINE_integer('batch_size', 128, 'Batch size during training')
-tf.flags.DEFINE_integer('epochs', 50000, 'Epochs during training')
+tf.flags.DEFINE_integer('epochs', 100, 'Epochs during training')
 tf.flags.DEFINE_float('lr', 1.0e-3, 'Initial learing rate')
 tf.flags.DEFINE_integer('embedding_size', 64, 'Embedding size for words')
 tf.flags.DEFINE_integer('hidden_units', 256, 'Embedding size for words')
 tf.flags.DEFINE_boolean('graph_write', True, 'whether the compute graph is written to logs file')
-tf.flags.DEFINE_float('keep_prob', 0.9, 'The probility used to dropout')
+tf.flags.DEFINE_float('keep_prob', 0.5, 'The probility used to dropout')
 tf.flags.DEFINE_string('mode', 'train0', 'The mode of train or predict as follows: '
                                          'train0: train first time or retrain'
                                          'train1: continue train'
@@ -141,9 +141,9 @@ class Seq2Seq():
                                                                                  tf.TensorShape([None,
                                                                                                  2 * FLAGS.hidden_units])
                                                                                  ])
-                training_decoder_outputs = tf.transpose(tf.reshape(output_layer(training_decoder_outputs),
-                                                                   [max_decoder_length, -1,
-                                                                    self.l_dict]), [1, 0, 2])
+                training_logits = tf.transpose(tf.reshape(output_layer(training_decoder_outputs),
+                                                          [max_decoder_length, -1,
+                                                           self.l_dict]), [1, 0, 2])
 
             # for infer
             with tf.variable_scope('decoder', reuse=tf.AUTO_REUSE):
@@ -189,17 +189,20 @@ class Seq2Seq():
         with tf.name_scope('Loss'):
             prediction = tf.identity(prediction, name='prediction')
 
-            training_logits = tf.identity(training_decoder_outputs, name='logits')
+            accuracy = tf.cast(tf.equal(tf.argmax(training_logits, axis=-1, output_type=tf.int32), decoder_targets),
+                               tf.float32)
+            accuracyf = tf.zeros_like(accuracy)
+            accuracy = tf.where(mask_decoder, accuracy, accuracyf)
+            accuracy = tf.reduce_sum(accuracy) / tf.cast(tf.reduce_sum(decoder_length), tf.float32)
+            accuracy = tf.identity(accuracy, name='accuracy')
+
             cost = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=decoder_targets, logits=training_logits)
             costf = tf.zeros_like(cost)
-
             loss = tf.reduce_mean(tf.div(tf.reduce_sum(tf.where(mask_decoder, cost, costf), axis=-1),
                                          tf.cast(decoder_length, tf.float32)), name='loss')
 
             optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.lr, name='optimizer')
-            gradients = optimizer.compute_gradients(loss)
-            clipped_gradients = [(tf.clip_by_value(grad, -1., 1.), var) for grad, var in gradients if grad is not None]
-            train_op = optimizer.apply_gradients(clipped_gradients, name='train_op')
+            train_op = optimizer.minimize(loss, name='train_op')
 
         if FLAGS.graph_write:
             writer = tf.summary.FileWriter('logs', graph=tf.get_default_graph(), filename_suffix='chatbot0')
@@ -243,8 +246,8 @@ class Seq2Seq():
         decoder_length = graph.get_operation_by_name('Input/decoder_length').outputs[0]
 
         prediction = graph.get_tensor_by_name('Loss/prediction:0')
-        logits = graph.get_tensor_by_name('Loss/logits:0')
 
+        accuracy = graph.get_tensor_by_name('Loss/accuracy:0')
         loss = graph.get_tensor_by_name('Loss/loss:0')
         train_op = graph.get_operation_by_name('Loss/train_op')
 
@@ -273,8 +276,10 @@ class Seq2Seq():
         total_batch = m_samples // FLAGS.batch_size
 
         loss_ = []
+        acc_ = []
         for epoch in range(1, FLAGS.epochs + 1):
             loss_epoch = 0.0
+            acc_epoch = 0.0
             for batch in range(total_batch):
                 x_input_batch = qtext2id[batch * FLAGS.batch_size:(batch + 1) * FLAGS.batch_size]
                 y_input_batch = atext2id_input[batch * FLAGS.batch_size:(batch + 1) * FLAGS.batch_size]
@@ -295,14 +300,13 @@ class Seq2Seq():
                     decoder_length: y_batch_length,
                     keep_prob: FLAGS.keep_prob
                 }
-                loss_batch, logits_, _ = sess.run([loss, logits, train_op], feed_dict=feed_dict)
-                # print(x_batch_length)
-                # print(y_batch_length)
-                # print(logits_.shape)
+                loss_batch, acc_batch, _ = sess.run([loss, accuracy, train_op], feed_dict=feed_dict)
 
                 loss_epoch += loss_batch
-                sys.stdout.write('>> %d/%d | %d/%d  loss:%.9f\n' % (
-                    epoch, FLAGS.epochs, batch + 1, total_batch, loss_batch))
+                acc_epoch += acc_batch
+
+                sys.stdout.write('>> %d/%d | %d/%d  loss:%.9f  acc:%.2f%%\n' % (
+                    epoch, FLAGS.epochs, batch + 1, total_batch, loss_batch, 100.0 * acc_batch))
                 sys.stdout.flush()
 
                 prediction_ = sess.run(prediction, feed_dict={encoder_inputs: test_encoder_input,
@@ -323,9 +327,10 @@ class Seq2Seq():
                 sys.stdout.flush()
 
             loss_.append(loss_epoch / total_batch)
+            acc_.append(acc_epoch / total_batch)
 
             print('\033[1;31;40m')
-            print('>> %d/%d | Loss:%.9f\n' % (epoch, FLAGS.epochs, loss_[-1]))
+            print('>> %d/%d | Loss:%.9f Acc:%.2f%%\n' % (epoch, FLAGS.epochs, loss_[-1], 100.0 * acc_[-1]))
             print('\033[0m')
 
             r = np.random.permutation(m_samples)
