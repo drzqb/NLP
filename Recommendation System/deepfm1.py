@@ -51,7 +51,7 @@ class DeepFM():
                                                                                     axis=1), axis=1, keepdims=True)
 
         with tf.name_scope('deep'):
-            now = tf.reshape(feature_embeded2, [-1, self.config.embedding_size * self.field_size])
+            now = tf.reshape(feature_mul_value, [-1, self.config.embedding_size * self.field_size])
             regl2 = tf.contrib.layers.l2_regularizer(self.config.l2)
             for i in range(len(self.config.dense_size)):
                 now = tf.nn.dropout(tf.layers.dense(now, self.config.dense_size[i],
@@ -89,6 +89,15 @@ class DeepFM():
             self.keep_prob: self.config.keep_prob
         })
         return loss, accuracy, auc
+
+    def eval(self, sess, feature_index, feature_value, label):
+        accuracy, auc = sess.run([self.accuracy, self.auc], feed_dict={
+            self.feature_index: feature_index,
+            self.feature_value: feature_value,
+            self.label: label,
+            self.keep_prob: 1.0
+        })
+        return accuracy, auc
 
     def predict(self, sess, feature_index, feature_value):
         result = sess.run(self.output, feed_dict={
@@ -132,6 +141,10 @@ def main(unused_argvs):
         value = np.array(data['xv'], dtype=np.float32)
         label = np.squeeze(np.array(data['y_train'], dtype=np.int32), axis=-1)
 
+        index_val = index[:CONFIG.batch_size]
+        value_val = value[:CONFIG.batch_size]
+        label_val = label[:CONFIG.batch_size]
+
         if CONFIG.mode.startswith('train'):
             if CONFIG.mode == 'train1':
                 mydf.restore(sess, CONFIG.model_save_path)
@@ -160,6 +173,10 @@ def main(unused_argvs):
                 auc.append(auc_epoch / total_batch)
 
                 sys.stdout.write(' | loss: %f  acc:%.2f%%  auc:%.2f\n' % (loss[-1], 100.0 * acc[-1], auc[-1]))
+                sys.stdout.flush()
+
+                acc_val, auc_val = mydf.eval(sess, index_val, value_val, label_val)
+                sys.stdout.write('  acc_val:%.2f%%  auc_val:%.2f\n' % (100.0 * acc_val, auc_val))
                 sys.stdout.flush()
 
                 r = np.random.permutation(m_samples)
