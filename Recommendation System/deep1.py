@@ -166,7 +166,7 @@ def main(unused_argvs):
                 sys.stdout.flush()
 
                 acc_val, auc_val = mydf.eval(sess, index_val, value_val, label_val)
-                sys.stdout.write('  acc_val:%.2f%%  auc_val:%.2f\n' % (100.0 * acc_val, auc_val))
+                sys.stdout.write('  acc_val:%.2f%%  auc_val:%.2f\n' % (100.0 * acc_val, auc_val[0]))
                 sys.stdout.flush()
 
                 r = np.random.permutation(m_samples)
