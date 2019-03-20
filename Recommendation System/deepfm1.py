@@ -54,16 +54,17 @@ class DeepFM():
             now = tf.reshape(feature_embeded2, [-1, self.config.embedding_size * self.field_size])
             regl2 = tf.contrib.layers.l2_regularizer(self.config.l2)
             for i in range(len(self.config.dense_size)):
-                dflayer = tf.layers.Dense(self.config.dense_size[i], activation=tf.nn.relu,
-                                          kernel_initializer=tf.contrib.layers.variance_scaling_initializer(),
-                                          kernel_regularizer=regl2)
-                now = tf.nn.dropout(dflayer(now), keep_prob=self.keep_prob)
-
+                now = tf.nn.dropout(tf.layers.dense(now, self.config.dense_size[i],
+                                                    activation=tf.nn.relu,
+                                                    kernel_initializer=tf.contrib.layers.variance_scaling_initializer(),
+                                                    kernel_regularizer=regl2),
+                                    keep_prob=self.keep_prob)
             outputdeep = now
 
         with tf.name_scope('output'):
             out = tf.squeeze(tf.layers.dense(tf.concat([output1, output2, outputdeep], axis=-1), 1,
-                                             kernel_initializer=tf.contrib.layers.xavier_initializer()), axis=-1)
+                                             kernel_initializer=tf.contrib.layers.xavier_initializer(),
+                                             kernel_regularizer=regl2), axis=-1)
             self.output = tf.sigmoid(out)
 
         with tf.name_scope('loss'):
