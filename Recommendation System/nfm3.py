@@ -35,7 +35,6 @@ class NFM():
             self.feature_index = tf.placeholder(tf.int32, shape=[None, None], name='feature_index')
             self.feature_value = tf.placeholder(tf.float32, shape=[None, None], name='feature_value')
             self.label = tf.placeholder(tf.int32, shape=[None], name='label')
-            self.keep_prob = tf.placeholder(tf.float32, name='keep_prob')
 
         with tf.name_scope('embedding'):
             embedding_matrix1 = tf.Variable(tf.random_normal([self.feature_sizes, 1], 0.0, 1.0))
