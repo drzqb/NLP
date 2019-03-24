@@ -11,7 +11,7 @@ from build_data import load_data
 tf.flags.DEFINE_integer('batch_size', 100, 'batch size for training')
 tf.flags.DEFINE_integer('epochs', 1000, 'number of iterations')
 tf.flags.DEFINE_integer('embedding_size', 256, 'embedding size for word embedding')
-tf.flags.DEFINE_multi_integer('dense_layer', 10, 'number of resnet dense layers')
+tf.flags.DEFINE_integer('dense_layer', 10, 'number of resnet dense layers')
 tf.flags.DEFINE_string('model_save_path', 'model/nfm2', 'directory of model file saved')
 tf.flags.DEFINE_float('lr', 0.1, 'learning rate for training')
 tf.flags.DEFINE_integer('per_save', 10, 'save model once every per_save iterations')
