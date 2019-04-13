@@ -54,7 +54,7 @@ class NFM():
                                                                                         axis=1))
         # ResNet block
         with tf.name_scope('deep'):
-            for i in range(len(self.config.dense_layer)):
+            for i in range(self.config.dense_layer):
                 now1 = tf.layers.dense(now, self.config.embedding_size,
                                        activation=tf.nn.relu,
                                        # kernel_initializer=tf.contrib.layers.variance_scaling_initializer(),
